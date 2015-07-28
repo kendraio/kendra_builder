@@ -1,0 +1,118 @@
+table#field_container_attribute_values input.fluid {
+  width: 100%;
+}
+.content-add-more {
+  margin-bottom: 1em;
+}
+.form-layout-default .column-wrapper {
+  margin-left: 1em;
+}
+.bef-select-as-radios .form-item {
+  background: none;
+  border: none;
+  display: inline;
+  padding: 0px;
+  -webkit-box-shadow: none;
+  -mox-box-shadow: none;
+  box-shadow: none;
+}
+#block-views-current_node_type-block_1 {
+  position: absolute;
+  right: 300px;
+  top: -20px;
+}
+#header-wrapper {
+  position: relative;
+}
+.field-field-usecase-steps .field-item {
+  margin-bottom: 10px;
+  padding-left: 10px;
+}
+
+#edit-comment-wrapper textarea {
+  height: 100px;
+}
+
+/**
+ * Navigation ===========================================================
+ */
+#navigation {
+  margin:0px 30px;
+  padding:5px 0px 4px;
+  border-bottom:1px solid #e0e0e0;
+  overflow:hidden;
+  height:20px;
+  position:relative;
+
+  font-size:11px;
+  text-shadow:#fff 0px 1px 0px;
+  line-height:20px;
+  color:#999;
+  }
+
+#navigation a {
+  -moz-border-radius:3px;
+  -webkit-border-radius:3px;
+  color:#333;
+  float:left;
+  padding:0px 10px;
+  }
+
+#navigation a:hover { background:#ddd; }
+
+#navigation ul.links { float:right; }
+
+#navigation .breadcrumb {
+  padding:0px 5px;
+  float:left;
+  text-transform:uppercase;
+  font-weight:normal;
+  }
+
+  #navigation .breadcrumb a,
+  #navigation .breadcrumb strong {
+    font-weight:normal;
+    float:left;
+    padding:0px 5px;
+    }
+
+  #navigation .breadcrumb .breadcrumb-link {
+    float:left;
+    padding-right:5px;
+    background:url(images/sprite.png) 100% 100% no-repeat;
+    }
+
+/**
+* API
+*/
+/*
+* the following helps display numbered list items next to their number
+* BUG: doesn't work as expected in Chrome
+.field-field-action .field-items .field-item {
+list-style: decimal inside none;
+}
+*/
+
+.node-type-use-case .field-item .column-main, .node-type-container .field-item .column-main, .field-type-nodereference .field-item .column-main {
+width:100%;
+}
+.node-type-use-case .field-item .node, .node-type-container .field-item .node, .field-type-nodereference .field-item .node {
+background-image:none;
+}
+.page-content fieldset {
+  border:1px solid #DDD;
+  border-top-color: #CCC;
+  border-bottom-color: #EEE;
+  padding:19px;
+}
+.field-item .field-item h2, .node .field-item h2 {
+font-size: 1em;
+}
+
+.field-field-rest-request-computed .field-item {
+    font-family: monospace;
+    background-color: #EEE;
+    border: 1px dotted #CCC;
+    padding: 1em 1em 1em 6em;
+    text-indent: -5em;
+}

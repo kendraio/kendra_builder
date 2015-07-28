@@ -1,0 +1,292 @@
+<?php
+
+define('KENDRA_API_ENDPOINT_BASE', 'http://api.kendra.org');
+define('KENDRA_API_ENDPOINT_BASE_WEB', 'http://trial.saracen.kendra.org/kendra-api-test');
+define('KENDRA_API_ENDPOINT_PATH_PREFIX', '/saracen/0.1');
+
+include_once('kendra_api_method.features.inc');
+include_once('kendra_api_method.fields.inc');
+
+/**
+ * Implements hook_menu().
+ */
+function kendra_api_method_menu() {
+	$items = array();
+
+	// output SMD
+	$items['methods.smd'] = array(
+    'title' => 'SMD',
+	    'page callback' => 'kendra_api_method_get_smd',
+    'access callback' => 'user_access',
+    'access arguments' => array('edit any method content'),
+	);
+
+	// output Services resource definitions
+	$items['methods.services'] = array(
+    'title' => 'Services',
+	    'page callback' => 'kendra_api_method_get_services',
+    'access callback' => 'user_access',
+    'access arguments' => array('edit any method content'),
+	);
+
+	return $items;
+}
+
+/**
+ * output Services format method descriptions
+ */
+function kendra_api_method_get_services() {
+	drupal_set_header('Content-Type: application/json; charset=utf-8');
+
+	$methods = kendra_api_method_get_methods();
+	$resources = kendra_api_method_methods_to_resources($methods);
+	kendra_api_method_resources_to_services($resources);
+
+	return drupal_json($resources);
+}
+
+/**
+ * output Services format method descriptions
+ *
+ * see: http://ceit.uq.edu.au/content/standard-definition-restful-interfaces-and-their-descriptions
+ */
+function kendra_api_method_get_smd() {
+	drupal_set_header('Content-Type: application/json; charset=utf-8');
+
+	$methods = kendra_api_method_get_methods();
+	$resources = kendra_api_method_methods_to_smd($methods);
+
+	return drupal_json($resources);
+}
+
+/**
+ *
+ */
+function kendra_api_method_get_methods() {
+	$sql = 'SELECT
+field_rest_uri_fragment_value AS path_fragment,
+field_rest_http_method_value AS http_method,
+node.title AS help
+FROM node node
+LEFT JOIN content_type_method ON node.vid = content_type_method.vid
+LEFT JOIN content_field_rest_uri_fragment ON node.vid = content_field_rest_uri_fragment.vid
+LEFT JOIN node_revisions node_revisions ON node.vid = node_revisions.vid
+WHERE (node.type in ("method"))
+AND (node.status <> 0)
+ORDER BY path_fragment 
+	';
+
+	// fetch method signatures
+	$result = db_query($sql);
+	while ($row = db_fetch_array($result)) {
+		$path_fragment = explode('/', $row['path_fragment']);
+		$resource_root = array_shift($path_fragment);
+		if (empty($resource_root)) $resource_root = array_shift($path_fragment); // remove leading slash
+		if (!empty($resource_root)) {
+			$methods[$resource_root][] = $row;
+		}
+	}
+
+	return $methods;
+}
+
+/**
+ * translate API-specific methods into service resource format
+ *
+ * note: this is a bit of hack, as it expects methods to be named in the format:
+ * $resource_name [ / $action_name ]
+ *
+ * @todo generalize
+ */
+function kendra_api_method_methods_to_resources($methods) {
+	$resources = array();
+
+	foreach($methods as $resource_root => $methodlist) {
+		foreach($methodlist as $method) {
+			$path_fragment = explode('/', $method['path_fragment']);
+			$resource_root = array_shift($path_fragment);
+			if (empty($resource_root)) $resource_root = array_shift($path_fragment); // remove leading slash
+
+			$parameter_count = count($path_fragment);
+			$resource_name = array_shift($path_fragment);
+				
+			if (!empty($resource_name) && strncmp($resource_name, '%', 1) != 0) {
+				$resources[$resource_root]['actions'][$resource_name] = array('help' => $method['help']);
+			} else {
+				$crud_method = http_method_to_crud_method($method['http_method'], $parameter_count);
+				$resources[$resource_root]['operations'][$crud_method] = array('help' => $method['help']);
+			}
+		}
+	}
+
+	return $resources;
+}
+
+/**
+ * transform resource definitions into those expected by Services
+ * @param array $resources
+ */
+function kendra_api_method_resources_to_services(&$resources) {
+	if (empty($resources)) return;
+
+	$defaults = array(
+		'operations' => array(),
+		'actions' => array(),
+		'relationships' => array(),
+	);
+
+	$controller_defaults = array(
+		'access arguments' => array('access content'),
+		'access arguments append' => TRUE,
+		'args' => array(),
+		'enabled' => 1,
+	);
+
+	/**
+	 * services core resources
+	 * as defined in services/servers/services.resource_build.inc
+	 */
+	$core_resources = array(
+	'comment',
+	'file',
+	'node',
+	'system',
+	'taxonomy',
+	'user',
+	);
+
+	foreach($resources as $res_name => $res) {
+		if (in_array($res_name, $core_resources)) {
+			/**
+			 * do not redefine services core resources
+			 * instead, just enable them
+			 */
+			foreach($res as $key => $resource) {
+				$defaults = array('enabled' => 1);
+
+				switch ($key) {
+					case 'operations':
+					case 'actions':
+						foreach($resource as $controller_name => $controller) {
+							$resources[$res_name][$key][$controller_name] = array_merge($defaults, $controller);
+						}
+						break;
+				}
+			}
+		} else {
+			/**
+			 * merge
+			 * @var unknown_type
+			 */
+			$resources[$res_name] = array_merge($defaults, $res);
+
+			foreach($res as $key => $resource) {
+				switch ($key) {
+					case 'operations':
+					case 'actions':
+						// override any callbacks, for security
+						foreach($resource as $controller_name => $controller) {
+							$callback_name = sprintf('_kss_%s_%s', strtolower($res_name), strtolower($controller_name));
+
+							$default_callbacks = array(
+							'callback' => $callback_name,
+							'access callback' => $callback_name . '_access',
+							'file' => array('type' => 'inc', 'module' => 'kendra_social_services', 'name' => 'kendra_social_services.callbacks'),
+							'access callback file' => array(
+							    'module'=> 'kendra_social_services', 
+							    'name'=>'kendra_social_services.callbacks', 
+							    'type'=>'inc'
+							    ),
+							    );
+
+							    watchdog('KAPI', "[$res_name][$key][$controller_name]");
+
+							    $resources[$res_name][$key][$controller_name] = array_merge($controller_defaults, $controller, $default_callbacks);
+
+						}
+						break;
+							
+					case 'relationships':
+						// @todo // ensure valid relationships
+						break;
+					default:
+						// @todo // should we unset the resource?
+				}
+			}
+
+			// peculiarity of Services: $operations is attached at two points
+			if (!empty($res['operations'])) {
+				$resources[$res_name] = array_merge($resources[$res_name], $resources[$res_name]['operations']);
+			}
+		}
+	}
+}
+
+/**
+ *
+ */
+function kendra_api_method_methods_to_smd($methods) {
+	$default_params = array(
+		"SMDVersion" => "2.0",
+		"description" => "Kendra API",
+		"id" => KENDRA_API_ENDPOINT_BASE, 
+		"target" => KENDRA_API_ENDPOINT_BASE . KENDRA_API_ENDPOINT_PATH_PREFIX,
+		"envelope" => "URL",
+		"transport" => "JSONP",
+		"callbackParamName" => "callback",
+		"parameters" => array(
+	array( "name" => "api_key", "optional" => true, "default" => "" ),
+	array( "name" => "format", "optional" => false, "default" => "json" )
+	),
+		"additionalParameters" => true,
+		"services" => array()
+	);
+	$resources = $default_params;
+
+	foreach($methods as $resource_root => $methodlist) {
+		foreach($methodlist as $method) {
+			$resource_name = array_shift($method['path_fragment']);
+			if (!empty($resource_name)) {
+				$key = strtolower($resource_name) . ucfirst($resource_root);
+			} else {
+				// @todo distinguish between 'index' and 'retrieve' ?
+				$crud_method = http_method_to_crud_method($method['http_method']);
+				$key = strtolower($crud_method) . ucfirst($resource_root);
+			}
+
+			$resources['services'][$key] = array(
+				'target' => KENDRA_API_ENDPOINT_BASE . KENDRA_API_ENDPOINT_PATH_PREFIX . $method['path_fragment'],
+				'description' => $method['help'],
+				'parameters' => array()
+			);
+		}
+	}
+
+	return $resources;
+}
+
+/**
+ * translate standard HTTP method values (e.g. GET|POST|PUT|DELETE)
+ * into CRUD values (e.g. create|retrieve|update|delete)
+ *
+ * @param string $method_name
+ */
+function http_method_to_crud_method($method_name = '', $parameter_count = 0) {
+	switch (strtoupper($method_name)) {
+		case 'GET':
+			if ($parameter_count > 0) return 'retrieve';
+			return 'index';
+			break;
+		case 'POST':
+			return 'create';
+			break;
+		case 'PUT':
+			return 'update';
+			break;
+		case 'DELETE':
+			return 'delete';
+			break;
+		default:
+			return null;
+	}
+}

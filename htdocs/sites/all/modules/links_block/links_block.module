@@ -1,0 +1,189 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_block().
+ *
+ * Generates a block with links for the current node.
+ */
+function links_block_block($op = 'list', $delta = 0) {
+  switch ($op) {
+    case 'list':
+      $blocks[0]['info'] = t('Links Block');
+      $blocks[0]['cache'] = BLOCK_CACHE_PER_PAGE | BLOCK_CACHE_PER_ROLE;
+      return $blocks;
+    case 'view':
+      if ((arg(0) == 'node') && is_numeric(arg(1))) {
+        $node = node_load(arg(1));
+        $types = variable_get("links_block_types", node_get_types('names') );
+        if (array_key_exists($node->type, $types)) {
+          // Load all of the links, and then do the alteration
+          // $node = node_build_content($node, $teaser, $page);
+          $node->links = module_invoke_all('link', 'node', $node, FALSE);
+
+          foreach (module_implements('link_alter') AS $module) {
+            $function = $module .'_link_alter';
+            $function($node->links, $node);
+          }
+
+          $block['subject'] = t('Links');
+          $outputs = array();
+
+	  $show_links = variable_get('links_block_show', array());
+          if ($node->links && in_array('links', $show_links)) {
+            $output = '';
+            foreach ($node->links as $key => $link) {
+              $output .= theme('links_block_item', 'link', $key, $link );
+            }
+            $outputs['links'] = $output;
+          }
+
+          if ($node->files && in_array('files', $show_links)) {
+            $output = '';
+            foreach ($node->files as $file) {
+              $output .= theme( 'links_block_item', 'file', 'image-jpeg', $file );
+            }
+            $outputs['files'] = $output;
+          }
+
+          $block['content'] = theme( 'links_block_block', $node, $outputs );
+
+          return $block;
+        }
+      }
+      break;
+    case 'configure':
+      $types = node_get_types('names');
+
+      $form['link_block_types'] = array(
+        '#type'          => 'checkboxes',
+        '#title'         => t('Display on'),
+        '#default_value' => variable_get('link_block_types', $types),
+        '#options'       => $types,
+        '#description'   => t('Select to which content type the block will be displayed.')
+      );
+
+      $show_links_opts = array('links' => t('Display the links associated with the node.'),
+			       'files' => t('Display the files attached to the node.'));
+      $form['links_block_show'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('Select which types of links to display'),
+        '#options' => $show_links_opts,
+        '#default_value' => variable_get('links_block_show', array()),
+        '#description' => t('Choose whether node links or file attachment links should appear for the node'),
+      );
+
+      return $form;
+    case 'save':
+        $link_block_types = array_keys($_POST['link_block_types']);
+        variable_set('link_block_types', $link_block_types);
+
+ 	$links_show = array_keys($_POST['links_block_show']);
+	variable_set('links_block_show', $links_show);
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function links_block_theme() {
+  return array(
+    'links_block_item' => array(
+      'file' => 'links_block.module',
+      'arguments' => array(
+        'type' => NULL,
+        'key' => NULL,
+        'item' => NULL,
+      ),
+    ),
+    'links_block_block' => array(
+      'file' => 'links_block.module',
+      'arguments' => array(
+        'node' => NULL,
+        'outputs' => NULL,
+      ),
+    ),
+  );
+}
+
+function theme_links_block_item( $type, $key, $item ) {
+
+  // Automatically add a class to each link and also to each LI
+  if (is_array($item)) {
+    if (isset($item['attributes']) && isset($item['attributes']['class'])) {
+      $item['attributes']['class'] .= ' '. $key;
+      $class = $key;
+    }
+    elseif (isset($item['attributes'])) {
+      $item['attributes']['class'] = $key;
+      $class = $key;
+    }
+  }
+  else {
+    $class = 'links-item';
+  }
+
+  $output = "<div class='links-item-". _links_block_check($type) ." $class'>";
+  switch ($type) {
+    case 'link':
+      $output .= _theme_links_block_link($item);
+      break;
+    case 'file':
+      $output .= _theme_links_block_file($item);
+      break;
+  }
+  $output .= "</div>";
+  return $output;
+}
+
+function theme_links_block_block( $node, $outputs ) {
+  $output = "<div class='links-block'>";
+  foreach ($outputs as $key => $value) {
+    $output .= "<div class='links-block-$key'>";
+    $output .= $value;
+    $output .= "</div>";
+  }
+  $output .= "</div>";
+
+  return $output;
+}
+
+function _theme_links_block_link($link) {
+  // Is the title HTML?
+  $html = isset($link['html']) && $link['html'];
+
+  // Initialize fragment and query variables.
+  $link['query'] = isset($link['query']) ? $link['query'] : NULL;
+  $link['fragment'] = isset($link['fragment']) ? $link['fragment'] : NULL;
+
+  if (isset($link['href'])) {
+    $output = l($link['title'], $link['href'], array('attributes' => $link['attributes'], 'query' => $link['query'], 'fragment' => $link['fragment'], 'html' => TRUE, 'language' => $link['language']));
+  }
+  elseif ($link['title']) {
+    // Some links are actually not links, but we wrap these in <span> for adding title and class attributes
+    if (!$html) {
+      $link['title'] = check_plain($link['title']);
+    }
+    $output = '<span'. drupal_attributes($link['attributes']) .'>'. $link['title'] .'</span>';
+  }
+
+  return $output;
+}
+
+function _theme_links_block_file($file) {
+  $link['title'] = $file->filename;
+  $link['href'] = $file->filepath;
+  $link['attributes'] = array( 'class' => _links_block_check($file->filemime) );
+  $link['query'] = NULL;
+  $link['fragment'] = NULL;
+  $output = l($link['title'], $link['href'], array('attributes' => $link['attributes'], 'query' => $link['query'], 'fragment' => $link['fragment'], 'html' => TRUE, 'language' => $link['language']));
+  $output .= "<span class='file-size'> (". format_size($file->filesize) .")</span>";
+  return $output;
+}
+
+function _links_block_check($string) {
+  $pattern = '/[^\w\d]+/ ';
+  $output = preg_replace($pattern, '-', utf8_encode($string));
+  return $output;
+}

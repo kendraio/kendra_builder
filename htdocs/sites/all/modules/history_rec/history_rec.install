@@ -1,0 +1,34 @@
+<?php
+
+/**
+ * @file 
+ * Install, update and uninstall functions for the Browsing History Recommender module.
+ */
+
+/**
+ * Implementation of hook_update_N().
+ */
+function history_rec_update_6100() {
+  // Delete variable used in old versions
+  $display_num = variable_get('history_rec_display_num', 5);
+  variable_del('history_rec_display_num');
+
+  // Set new variables with old value
+  variable_set('history_rec_display_num_rel', $display_num);
+  variable_set('history_rec_display_num_rec', $display_num);
+  return array();
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function history_rec_uninstall() {
+  // Get global variable array
+  global $conf;
+  foreach (array_keys($conf) as $key) {
+    // Find variables that have the module prefix
+    if (strpos($key, 'history_rec_') === 0) {
+      variable_del($key);
+    }
+  }
+}
