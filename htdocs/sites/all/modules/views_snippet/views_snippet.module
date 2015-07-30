@@ -26,8 +26,8 @@ function template_preprocess_views_view_snippet(&$vars) {
 /**
  *  Preprocess the row output vars before they go to the template:
  */
-function template_preprocess_views_view_row_snippet(&$vars) {
-  template_preprocess_views_view_fields(&$vars);
+function template_preprocess_views_view_row_snippet($vars) {
+  template_preprocess_views_view_fields($vars);
   $keys = array();
   $vals = array();
   foreach (array_keys((array)$vars['fields']) as $key) {
@@ -36,13 +36,3 @@ function template_preprocess_views_view_row_snippet(&$vars) {
   }
   $vars['rendered_row'] = filter_xss_admin(str_replace($keys, $vals, $vars['options']['pattern']));
 }
-
-
-
-
-
-
-
-
-
-
