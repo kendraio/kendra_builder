@@ -33,7 +33,7 @@ function computed_field_tools_menu() {
     'access arguments' => array('recompute computed fields'),
     'type' => MENU_LOCAL_TASK,
   );
-  
+
   return $items;
 }
 
@@ -49,21 +49,20 @@ function computed_field_tools_perm() {
  */
 function computed_field_tools_recompute_form($form_state) {
   $form = array();
-  
+
   $computed_fields = array();
   foreach (content_fields() as $field) {
     if ($field['type'] == 'computed') {
       $computed_fields[$field['field_name']] = $field['field_name'];
     }
   }
-  
+
   $form['computed_field_to_recompute'] = array(
     '#type' => 'select',
     '#title' => t('Select computed field to re-compute'),
     '#options' => $computed_fields,
-    '#description' => t('Please set site ind maintenance mode before re-computing fields.'),
   );
-  
+
   // Get content types with computed fields based on $computed_fields from above.
   $content_types_options = array();
   foreach (content_types() as $content_type) {
@@ -76,7 +75,7 @@ function computed_field_tools_recompute_form($form_state) {
       }
     }
   }
-  
+
   $form['content_types'] = array(
     '#type' => 'select',
     '#title' => t('Optional: select content types to re-compute.'),
@@ -85,12 +84,12 @@ function computed_field_tools_recompute_form($form_state) {
     '#size' => 5,
     '#description' => t('The list does not take into account which computed field is on which content types.<br />If no content types is selected, all the content types for the selected computed field are used.'),
   );
-  
+
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => 'Re-compute',
   );
-  
+
   return $form;
 }
 
@@ -104,14 +103,14 @@ function computed_field_tools_recompute_form_submit($form, &$form_state) {
     drupal_set_message(t('No content field given.'), 'error');
     return;
   }
-  
+
   $field = content_fields($form_state['values']['computed_field_to_recompute']);
-  
+
   if (empty($field)) {
     drupal_set_message(t('Content field not found.'), 'error');
     return;
   }
-  
+
   // Get node types to re-compute
   if (!empty($form_state['values']['content_types']) && is_array($form_state['values']['content_types'])) {
     $types = $form_state['values']['content_types'];
@@ -130,9 +129,9 @@ function computed_field_tools_recompute_form_submit($form, &$form_state) {
       $types[] = $type['type'];
     }
   }
-  
+
   if (empty($types)) {
-    drupal_set_message(t('No content types found for !content_type.', array('!content_type' => $form_state['values']['computed_field_to_recompute'])), 'error');
+    drupal_set_message(t('No content types found for @content_type.', array('@content_type' => $form_state['values']['computed_field_to_recompute'])), 'error');
     return;
   }
   $db_info = content_database_info($field);
@@ -155,7 +154,7 @@ function computed_field_tools_recompute_form_submit($form, &$form_state) {
  * Code partly stolen from http://drupal.org/node/195013.
  */
 function _computed_field_tools_batch_recompute($types, $field, $form_state, &$context) {
-  
+
   // Make content aware connection to the computed fields query.
   $db_info = content_database_info($field);
   $db_table = $db_info['table'];
@@ -170,7 +169,7 @@ function _computed_field_tools_batch_recompute($types, $field, $form_state, &$co
     $context['results']['total_nids_touched'] = 0;
     $context['results']['start'] = microtime(TRUE);
     $context['results']['end'] = 0;
-    
+
     // Lets examine how many nodes, we are dealing with.
     $result_total_count = db_query(
       "SELECT COUNT(*) as total_count FROM {node} node "
@@ -180,41 +179,62 @@ function _computed_field_tools_batch_recompute($types, $field, $form_state, &$co
     $total_count = db_fetch_object($result_total_count);
     $context['results']['total_nid_count'] = $total_count->total_count;
   }
-  
+
   // Query which fields to compute.
   $results = db_query_range(
-    "SELECT node.vid FROM {node} node "
-    . "WHERE node.type IN (" . db_placeholders($types, 'text') . ") "
-    . ' ORDER BY node.nid ASC'
+    "SELECT n.vid, cf." . $field_db_column_name . " AS existing_value FROM {node} n "
+    . " LEFT JOIN {" . $db_table . "} cf ON cf.vid=n.vid "
+    . "WHERE n.type IN (" . db_placeholders($types, 'text') . ") "
+    . ' ORDER BY n.nid ASC'
     , $types
     , $context['sandbox']['nodes_offset']
     , $context['sandbox']['nodes_per_run']
   );
-  
+
   // Re-compute the given nodes.
   $counter = 0;
   while ($result = db_fetch_object($results)) {
     $node = node_load(array('vid' => $result->vid));
     $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array(0 => array('value' => NULL));
+
     _computed_field_compute_value($node, $field, $node_field);
-    
-    db_query("UPDATE {" . $db_table . "} SET `" . $field_db_column_name . "` = " . db_type_placeholder($field_db_column_type) . " WHERE `vid` = %d", $node_field[0]['value'], $result->vid);
-    if (db_affected_rows() < 1) {
-      // Entry is not yet created, so lets insert.
-      db_query("INSERT INTO {" . $db_table . "} SET `" . $field_db_column_name . "` = " . db_type_placeholder($field_db_column_type) . ", `vid` = %d, `nid` = %d", $node_field[0]['value'], $result->vid, $node->nid);
+
+    // Only store changed values.
+    if ($result->existing_value != $node_field[0]['value']) {
+      db_query("UPDATE {" . $db_table . "} SET `" . $field_db_column_name . "` = " . db_type_placeholder($field_db_column_type) . " WHERE `vid` = %d", $node_field[0]['value'], $result->vid);
+      if (db_affected_rows() < 1) {
+        // Entry is not yet created, so lets insert.
+        db_query("INSERT INTO {" . $db_table . "} SET `" . $field_db_column_name . "` = " . db_type_placeholder($field_db_column_type) . ", `vid` = %d, `nid` = %d", $node_field[0]['value'], $result->vid, $node->nid);
+      }
+
+      // Clear the content cache for the element so that the changes will be
+      // visible at once.
+      $cid = 'content:'. $node->nid .':'. $node->vid;
+      cache_clear_all($cid, content_cache_tablename());
     }
+
     $counter++;
   }
-  
+
   $context['sandbox']['nodes_offset'] += $context['sandbox']['nodes_per_run'];
-  
+
   if ($context['sandbox']['nodes_offset'] + 1 >= $context['results']['total_nid_count']) {
     $context['results']['end'] = microtime(TRUE);
     $context['finished'] = 1;
     return;
   }
-  
-  $context['message'] = '<p>' . t('Processed %nodes of %nodes_total', array('%nodes' => $context['sandbox']['nodes_offset'], '%nodes_total' => $context['results']['total_nid_count'])) . '</p>';
+
+  if ($context['sandbox']['nodes_offset']) {
+    $time_spent = microtime(TRUE) - $context['results']['start'];
+    $time_left = ceil(($context['results']['total_nid_count'] * $time_spent / $context['sandbox']['nodes_offset']) - $time_spent);
+    $time_left_formatted = t('@minutes minutes @seconds seconds', array('@minutes' => floor($time_left / 60), '@seconds' => $time_left % 60));
+  }
+  else {
+    $time_left_formatted = 'Estimating...';
+  }
+
+  $remaining_nodes_count = $context['results']['total_nid_count'] - $context['sandbox']['nodes_offset'];
+  $context['message'] = '<p>' . t('Remaining %nodes_remaining of %nodes_total. Estimated time left: %time_left', array('%nodes_remaining' => $remaining_nodes_count, '%nodes_total' => $context['results']['total_nid_count'], '%time_left' => $time_left_formatted)) . '</p>';
   $context['finished'] = $context['sandbox']['nodes_offset'] / $context['results']['total_nid_count'];
 }
 
