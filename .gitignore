@@ -27,8 +27,8 @@
 tags
 .buildpath
 .settings
-sites/default/settings.php
-sites/default/files
+**/sites/default/settings.php
+**/sites/default/files
 *.sql
 *.gz
 *.tar
