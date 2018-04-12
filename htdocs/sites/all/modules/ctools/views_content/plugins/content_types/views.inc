@@ -1,5 +1,4 @@
 <?php
-// $Id: views.inc,v 1.11.2.11 2010/07/23 06:08:39 merlinofchaos Exp $
 
 /**
  * @file
@@ -121,9 +120,11 @@ function views_content_views_content_type_render($subtype, $conf, $panel_args, $
     $args = str_replace("%$id", $arg, $args);
   }
 
-  foreach ($panel_args as $id => $arg) {
-    if (is_string($arg)) {
-      $args = str_replace("@$id", $arg, $args);
+  if (!empty($panel_args) && is_array($panel_args)) {
+    foreach ($panel_args as $id => $arg) {
+      if (is_string($arg)) {
+        $args = str_replace("@$id", $arg, $args);
+      }
     }
   }
 
@@ -430,6 +431,7 @@ function views_content_views_content_type_admin_info($subtype, $conf, $contexts)
   }
 
   $display = empty($conf['display']) ? $view->current_display : $conf['display'];
+  $block = new stdClass();
   $block->title = t('View information');
 
   $block->content = '<ul>';

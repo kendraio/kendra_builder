@@ -26,8 +26,9 @@
  *   and TRUE values to decimal 1.
  *
  * @return
- *   A database query result resource, or FALSE if the query was not
- *   executed correctly.
+ *   Successful SELECT, SHOW, DESCRIBE, EXPLAIN, or other queries which return a
+ *   set of results will return a database query result resource. Other
+ *   successful queries will return TRUE and failing queries will return FALSE.
  */
 function db_query($query) {
   $args = func_get_args();
@@ -285,7 +286,7 @@ function db_drop_table(&$ret, $table) {
  *   This is most useful for creating NOT NULL columns with no default
  *   value in existing tables.
  * @param $keys_new
- *   Optional keys and indexes specification to be created on the
+ *   (optional) Keys and indexes specification to be created on the
  *   table along with adding the field. The format is the same as a
  *   table specification but without the 'fields' element.  If you are
  *   adding a type 'serial' field, you MUST specify at least one key
@@ -514,7 +515,7 @@ function db_drop_index(&$ret, $table, $name) {
  * @param $spec
  *   The field specification for the new field.
  * @param $keys_new
- *   Optional keys and indexes specification to be created on the
+ *   (optional) Keys and indexes specification to be created on the
  *   table along with changing the field. The format is the same as a
  *   table specification but without the 'fields' element.
  */

@@ -6,16 +6,16 @@
  * Views theme to render view fields as JSON.
  *
  * - $view: The view in use.
- * - $rows: Array of row objects as rendered by _views_json_render_fields 
+ * - $rows: Array of row objects as rendered by _views_json_render_fields
  * - $attachment: Not used currently
  * - $options: The options for the style passed in from the UI.
  *
  * @ingroup views_templates
  * @see views_json.views.inc
- */ 
+ */
 
-function template_preprocess_views_views_json_style_simple($vars) {	
-  template_preprocess_views_view_fields(&$vars);
+function template_preprocess_views_views_json_style_simple($vars) {
+  template_preprocess_views_view_fields($vars);
 
   $view = $vars["view"];
   $rows = $vars["rows"];
@@ -23,16 +23,16 @@ function template_preprocess_views_views_json_style_simple($vars) {
   $base = $view->base_table;
   $root_object = $options["root_object"];
   $top_child_object_raw = $options["top_child_object"];
-  $plaintext_output = $options["plaintext_output"];	
+  $plaintext_output = $options["plaintext_output"];
   $objects = array();
-  
+
   foreach($rows as $row) {
     if (isset($row['field_attribute_id_value'])) {
       $top_child_object = array_pop(explode('.', $row['field_attribute_id_value']->content));
     } else {
       $top_child_object = $top_child_object_raw;
     }
-   
+
     //$field_type = isset($row['field_attribute_type_nid']) ? $row['field_attribute_type_nid']->content : '';
 
     $object = array($top_child_object => array());
@@ -41,8 +41,8 @@ function template_preprocess_views_views_json_style_simple($vars) {
       if ($options["field_output"] == "normal") {
 	if ($field->label)
 	  $label = $plaintext_output ? strip_tags($field->label) : $field->label;
-	else $label = $plaintext_output ? strip_tags($field->id) : $field->id;  
-        if (!$field->is_multiple) {   	  	
+	else $label = $plaintext_output ? strip_tags($field->id) : $field->id;
+        if (!$field->is_multiple) {
 	  $content = $plaintext_output ? strip_tags($field->content) : $field->content;
 	  //watchdog(__FILE__, 'field '.$top_child_object.' has type ' . $field_type);
         }
@@ -56,30 +56,30 @@ function template_preprocess_views_views_json_style_simple($vars) {
       }
       elseif ($options["field_output"] == "raw") {
 	$label = $plaintext_output ? strip_tags($field->id) : $field->id;
-	if (!$field->is_multiple) {   	  	
+	if (!$field->is_multiple) {
 	  $content = $plaintext_output ? strip_tags($field->raw) : $field->raw;
         }
         else {
 	  $content = array();
 	  foreach($field->raw as $n=>$oc) $content[$n] = $plaintext_output ? strip_tags($oc) : $oc;
         }
-      }	
+      }
       $object[$top_child_object][$label] = $content;
     }
     $objects[] = $object;
-  }	 
-  
+  }
+
   $vars["rows"] = array($root_object => $objects);
 }
 
-function template_preprocess_views_views_json_style_exhibit($vars) {	
+function template_preprocess_views_views_json_style_exhibit($vars) {
   $view = $vars["view"];
   $rows = $vars["rows"];
   $options = $vars["options"];
   $base = $view->base_table;
   $root_object = "Items";
   $top_child_object = $options["top_child_object"];
-  $plaintext_output = $options["plaintext_output"];	
+  $plaintext_output = $options["plaintext_output"];
 	$objects = array();
   foreach($rows as $row) {
     	$object = array($top_child_object => array());
@@ -88,8 +88,8 @@ function template_preprocess_views_views_json_style_exhibit($vars) {
   	  if ($options["field_output"] == "normal") {
   	  	if ($field->label)
   	  	  $label = $plaintext_output ? strip_tags($field->label) : $field->label;
-  	  	else $label = $plaintext_output ? strip_tags($field->id) : $field->id;  
-        if (!$field->is_multiple) {   	  	
+  	  	else $label = $plaintext_output ? strip_tags($field->id) : $field->id;
+        if (!$field->is_multiple) {
   	  	  $content = $plaintext_output ? strip_tags($field->content) : $field->content;
         }
         else {
@@ -99,20 +99,19 @@ function template_preprocess_views_views_json_style_exhibit($vars) {
   	  }
   	  elseif ($options["field_output"] == "raw") {
   	  	$label = $plaintext_output ? strip_tags($field->id) : $field->id;
-  	    if (!$field->is_multiple) {   	  	
+  	    if (!$field->is_multiple) {
   	  	  $content = $plaintext_output ? strip_tags($field->raw) : $field->raw;
         }
         else {
         	$content = array();
         	foreach($field->raw as $n=>$oc) $content[$n] = $plaintext_output ? strip_tags($oc) : $oc;
         }
-  	  }	
+  	  }
   	  $object[$top_child_object][$label] = $content;
   	}
   	if (!array_key_exists("label", $object)) $object["label"] = "Item";
     if (!array_key_exists("type", $object)) $object["type"] = $top_child_object;
     $objects[] = $object;
-  }	
-  $vars["rows"] = array($root_object => $objects); 
+  }
+  $vars["rows"] = array($root_object => $objects);
 }
-

@@ -52,7 +52,7 @@ function db_connect($url) {
   $url = parse_url($url);
   $conn_string = '';
 
-  // Decode url-encoded information in the db connection string
+  // Decode urlencoded information in the db connection string
   if (isset($url['user'])) {
     $conn_string .= ' user='. urldecode($url['user']);
   }
@@ -287,9 +287,9 @@ function db_query_range($query) {
 /**
  * Runs a SELECT query and stores its results in a temporary table.
  *
- * Use this as a substitute for db_query() when the results need to stored
- * in a temporary table. Temporary tables exist for the duration of the page
- * request.
+ * Use this as a substitute for db_query() when the results need to be stored
+ * in a temporary table.
+ *
  * User-supplied arguments to the query should be passed in as separate parameters
  * so that they can be properly escaped to avoid SQL injection attacks.
  *
@@ -308,10 +308,10 @@ function db_query_range($query) {
  *
  *   NOTE: using this syntax will cast NULL and FALSE values to decimal 0,
  *   and TRUE values to decimal 1.
- *
  * @param $table
  *   The name of the temporary table to select into. This name will not be
  *   prefixed as there is no risk of collision.
+ *
  * @return
  *   A database query result resource, or FALSE if the query was not executed
  *   correctly.
@@ -657,7 +657,7 @@ function db_drop_table(&$ret, $table) {
  *   This is most useful for creating NOT NULL columns with no default
  *   value in existing tables.
  * @param $new_keys
- *   Optional keys and indexes specification to be created on the
+ *   (optional) Keys and indexes specification to be created on the
  *   table along with adding the field. The format is the same as a
  *   table specification but without the 'fields' element.  If you are
  *   adding a type 'serial' field, you MUST specify at least one key
@@ -887,7 +887,7 @@ function db_drop_index(&$ret, $table, $name) {
  * @param $spec
  *   The field specification for the new field.
  * @param $new_keys
- *   Optional keys and indexes specification to be created on the
+ *   (optional) Keys and indexes specification to be created on the
  *   table along with changing the field. The format is the same as a
  *   table specification but without the 'fields' element.
  */

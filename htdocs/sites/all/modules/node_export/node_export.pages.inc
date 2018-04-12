@@ -137,6 +137,18 @@ function node_export_settings() {
     '#description' => t('If there are more than this many nodes, the [nid-list] token for the filename will not be built.  This is to prevent very long filenames.'),
   );
 
+  $form['basic']['node_export_existing'] = array(
+    '#type' => 'radios',
+    '#title' => t('When importing a node that already exists'),
+    '#options' => array(
+      'new' => t('Create a new node'),
+      'revision' => t('Create a new revision of the existing node'),
+      'skip' => t('Skip the node'),
+    ),
+    '#description' => t('UUIDs are used to uniquely identify nodes.'),
+    '#default_value' => variable_get('node_export_existing', 'new'),
+  );
+
   $form['publishing'] = array(
     '#type' => 'fieldset',
     '#title' => t('Reset values on import'),
@@ -164,6 +176,16 @@ function node_export_settings() {
       '#type' => 'checkbox',
       '#title' => t('Changed time (<em>Last updated</em> date/time)'),
       '#default_value' => variable_get('node_export_reset_changed_'. $type, TRUE),
+    );
+    $form['publishing'][$type]['node_export_reset_revision_timestamp_'. $type] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Revision changed time'),
+      '#default_value' => variable_get('node_export_reset_revision_timestamp_'. $type, TRUE),
+    );
+    $form['publishing'][$type]['node_export_reset_last_comment_timestamp_'. $type] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Last comment time (date/time the last comment was made)'),
+      '#default_value' => variable_get('node_export_reset_last_comment_timestamp_'. $type, TRUE),
     );
     $form['publishing'][$type]['node_export_reset_menu_'. $type] = array(
       '#type' => 'checkbox',
@@ -282,6 +304,10 @@ function node_export_nodes_to_nids($nodes) {
  */
 function node_export_form($form_state, $nids, $code_string, $format) {
   $form = array();
+  if (empty($nids)) {
+    drupal_set_message(t('No content selected.'), 'warning');
+    $nids = array();
+  }
   if (variable_get('node_export_code', 'all') == 'all') {
     $form['nids'] = array(
       '#type' => 'hidden',
@@ -305,6 +331,7 @@ function node_export_form($form_state, $nids, $code_string, $format) {
     '#attributes' => array(
       'wrap' => 'off',
     ),
+    '#wysiwyg' => FALSE,
   );
   return $form;
 }
@@ -403,6 +430,7 @@ function node_export_import_form($form_state) {
     '#default_value' => '',
     '#rows' => 30,
     '#description' => t('Cut and paste the code of an exported node here.'),
+    '#wysiwyg' => FALSE,
   );
   $form['#redirect'] = FALSE;
   $form['submit'] = array(
