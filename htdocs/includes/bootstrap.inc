@@ -667,7 +667,7 @@ function page_get_cache($status_only = FALSE) {
   }
   $cache = NULL;
 
-  if (!$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && count(drupal_set_message()) == 0 && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
+  if (!$user->uid && $_SERVER['REQUEST_METHOD'] == 'GET' && !drupal_set_message() && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
     $cache = cache_get($base_root . request_uri(), 'cache_page');
 
     if (empty($cache)) {
@@ -1138,6 +1138,18 @@ function _drupal_bootstrap($phase) {
 
     case DRUPAL_BOOTSTRAP_CONFIGURATION:
       drupal_unset_globals();
+      // PHP's built-in phar:// stream wrapper is not sufficiently secure. Override
+      // it with a more secure one, which requires PHP 5.3.3. For lower versions,
+      // unregister the built-in one without replacing it. Sites needing phar
+      // support for lower PHP versions must implement hook_stream_wrappers() to
+      // register their desired implementation.
+      if (in_array('phar', stream_get_wrappers(), TRUE)) {
+        stream_wrapper_unregister('phar');
+        if (version_compare(PHP_VERSION, '5.3.3', '>=')) {
+          include_once './includes/file.phar.inc';
+          file_register_phar_wrapper();
+        }
+      }
       // Start a page timer:
       timer_start('page');
       // Initialize the configuration
@@ -1750,4 +1762,31 @@ function _drupal_parse_url($url) {
     unset($options['query']['q']);
   }
   return $options;
+}
+
+// Shim for ereg() family of functions for PHP 7+ where they don't exist.
+if (!function_exists('ereg')) {
+  function ereg($pattern, $subject, &$matches = array()) {
+    return preg_match('/' . $pattern . '/', $subject, $matches);
+  }
+
+  function eregi($pattern, $subject, &$matches = array()) {
+    return preg_match('/' . $pattern . '/i', $subject, $matches);
+  }
+
+  function ereg_replace($pattern, $replacement, $string) {
+    return preg_replace('/' . $pattern . '/', $replacement, $string);
+  }
+
+  function eregi_replace($pattern, $replacement, $string) {
+    return preg_replace('/' . $pattern . '/i', $replacement, $string);
+  }
+
+  function split($pattern, $subject, $limit = -1) {
+    return preg_split('/' . $pattern . '/', $subject, $limit);
+  }
+
+  function spliti($pattern, $subject, $limit = -1) {
+    return preg_split('/' . $pattern . '/i', $subject, $limit);
+  }
 }

@@ -223,7 +223,7 @@ function conditional_fields_nodeapi(&$node, $op, $teaser, $page) {
       // Create an array with the selected controlling field's values
       // Check if the controlling field is viewed as well
       $field_key = array_keys($type['fields'][$field['control_field_name']]['columns']);
-      foreach ((array)$node->$field['control_field_name'] as $value) {
+      foreach ((array)$node->{$field['control_field_name']} as $value) {
         $current_values[$field['control_field_name']][] = $value[$field_key[0]];
         if (!empty($value[$field_key[0]])) {
           if ($node->content[$field['control_field_name']]['field']['#access'] == TRUE ||
@@ -300,7 +300,7 @@ function conditional_fields_form_alter(&$form, $form_state, $form_id) {
         if (db_result(db_query("SELECT COUNT(*) FROM {conditional_fields} WHERE field_name = '%s'", $item_name))) {
           $form[$item_name]['#post_render'] = array_merge(array('conditional_fields_add_more_post_render'), (array)$form[$item_name]['#post_render']);
           foreach (element_children($form[$item_name]) as $element) {
-            conditional_fields_custom_required_field($form[$item_name][$element]);
+            conditional_fields_custom_required_field($form[$item_name][$element], $form['#field_info'][$item_name]);
           }
         }
       }
@@ -308,10 +308,16 @@ function conditional_fields_form_alter(&$form, $form_state, $form_id) {
     case 'content_copy_import_form':
       $form['#submit'][] = 'conditional_fields_import';
       break;
+    // Compatibility with Content Profile User Registration module.
+    case 'user_register':
+      if (isset($form['#content_profile_registration_use_types'])) {
+        conditional_fields_node_form($form, $form_state);
+      }
+      break;
   }
 
   if (isset($form['type']['#value']) && $form_id == $form['type']['#value'] . '_node_form') {
-    conditional_fields_node_editing_form($form, $form_state);
+    conditional_fields_node_form($form, $form_state);
   }
 }
 
@@ -484,14 +490,14 @@ function conditional_fields_content_admin_field_controllable($type, $default_val
     '#title' => t('Controlling fields'),
     '#collapsible' => TRUE,
     '#collapsed' => FALSE,
-    '#description' => '<p>' . t('Choose which allowed values of available controlling fields will trigger this @context, making it visible both in node editing and view. If no value is set, the @context will be always visible. Only fields with <em>Allowed values</em> set are available for control. If a field is inside a controlled group, it can control or be controlled only by fields in the same group.', array('@context' => $context)) . '</p>',
+    '#description' => '<p>' . t('Choose which allowed values of available controlling fields will trigger this @context, making it visible both in node editing and view. If the <em>- Not controlling -</em> option or no option is selected, the @context will be always visible. If the <em>- None (empty value) -</em> option is selected, the controlled field will be visible only when the controlling field has no value. Only fields with <em>Allowed values</em> set are available for control. If a field is inside a controlled group, it can control or be controlled only by fields in the same group.', array('@context' => $context)) . '</p>',
   );
 
   // Create selection lists
   foreach ($available_fields as $field) {
     $allowed_values[$field['field_name']] = array('conditional_field_no_value' => t('- Not controlling -')) + $allowed_values[$field['field_name']];
 
-    if (isset($default_values[$field['field_name']]) && $default_values[$field['field_name']] != FALSE) {
+    if (!empty($default_values[$field['field_name']])) {
       $default_value = $default_values[$field['field_name']];
     }
     else {
@@ -532,10 +538,10 @@ function conditional_fields_fieldgroup_group_edit_form(&$form) {
     }
   }
 
-  // Find fields with allowed values which are not inside a group
+  // Find fields with allowed values which are not inside a group or are in the same group of this group.
   foreach ($form['#content_type']['fields'] as $field) {
     $in_group = fieldgroup_get_group($form['#content_type']['type'], $field['field_name']);
-    if (!$in_group) {
+    if (!$in_group || $in_group == $form['parent']['#default_value']) {
       if ($allowed_values[$field['field_name']] = conditional_fields_allowed_values($field)) {
         $available_fields[$field['field_name']] = $field;
       }
@@ -575,6 +581,10 @@ function conditional_fields_content_admin_field_validate($form, &$form_state) {
       if (!empty($trigger_values['conditional_field_no_value']) && count($trigger_values) > 1) {
         form_set_error('conditional_fields][' . $available_field, t('You cannot select "Not controlling" and other values at the same time.'));
       }
+      // Disallow selecting "None (empty value)" and values at the same time.
+      if (isset($trigger_values['']) && count($trigger_values) > 1) {
+        form_set_error('conditional_fields][' . $available_field, t('You cannot select "None (empty value)" and other values at the same time.'));
+      }
     }
   }
   else {
@@ -612,6 +622,15 @@ function conditional_fields_allowed_values($field) {
     $function = $field['module'] .'_allowed_values';
     $options[$field['field_name']] = function_exists($function) ? $function($field) : content_allowed_values($field);
 
+    if (empty($options[$field['field_name']])) {
+      return FALSE;
+    }
+
+    // Add an empty allowed value to unrequired single value fields.
+    if (!$field['required'] && !$field['multiple']) {
+      $options[$field['field_name']] = array_merge(array('' => t('- None (empty value) -')), $options[$field['field_name']]);
+    }
+
     // Strip tags, since we use a select, not the real widget.
     foreach ($options[$field['field_name']] as $key => $label) {
       $options[$field['field_name']][$key] = strip_tags($label);
@@ -625,7 +644,7 @@ function conditional_fields_allowed_values($field) {
  * Alter node form. We do it in after_build for compatibility
  * with non-core CCK widgets
  */
-function conditional_fields_node_editing_form(&$form, $form_state) {
+function conditional_fields_node_form(&$form, $form_state) {
   $form['#after_build'][] = 'conditional_fields_node_after_build';
 }
 
@@ -767,11 +786,11 @@ function conditional_fields_node_after_build($form, &$form_state) {
   // we need to unset the #required property and perform a custom validation.
   foreach ($required_fields as $field) {
     if ($field['in_group']) {
-      conditional_fields_custom_required_field($form[$field['in_group']][$field['field']]);
+      conditional_fields_custom_required_field($form[$field['in_group']][$field['field']], $form['#field_info'][$field['field']]);
       conditional_fields_item_apply_theme($form[$field['in_group']][$field['field']]);
     }
     else {
-      conditional_fields_custom_required_field($form[$field['field']]);
+      conditional_fields_custom_required_field($form[$field['field']], $form['#field_info'][$field['field']]);
       conditional_fields_item_apply_theme($form[$field['field']]);
     }
   }
@@ -788,6 +807,12 @@ function conditional_fields_node_after_build($form, &$form_state) {
       break;
   }
 
+  // Key settings by an unique identifier so we can have multiple node forms
+  // with conditional fields in the same page. We use the form build id since
+  // the form's id might not be unique.
+  $js_id = $form['#build_id'];
+  $js_settings = array($js_id => $js_settings);
+
   if ($ui_settings != C_FIELDS_JS_NO) {
     conditional_fields_add_js($js_settings);
   }
@@ -798,7 +823,7 @@ function conditional_fields_node_after_build($form, &$form_state) {
   $form['#conditional_fields']['settings'] = $js_settings;
 
   // Add validation function
-  $form['#validate'] = array_merge(array('conditional_fields_node_editing_form_validate'), (array)$form['#validate']);
+  $form['#validate'] = array_merge(array('conditional_fields_node_form_validate'), (array)$form['#validate']);
 
   return $form;
 }
@@ -869,7 +894,7 @@ function conditional_fields_get_group($type_name, $field_name) {
 /**
  * Validation for node editing form.
  */
-function conditional_fields_node_editing_form_validate($form, &$form_state) {
+function conditional_fields_node_form_validate($form, &$form_state) {
   // When form fails validation, hook_form_alter is not called, so we add js here too
   if ($form['#conditional_fields']['settings']['ui_settings']) {
     conditional_fields_add_js($form['#conditional_fields']['settings']);
@@ -908,7 +933,7 @@ function conditional_fields_node_editing_form_validate($form, &$form_state) {
         if (!empty($required_fields) && $required_fields[$controlled_field_name]) {
           $in_group = $required_fields[$controlled_field_name]['in_group'];
           // Check if the controlled field is empty
-          if (conditional_fields_check_empty($form_state['values'][$controlled_field_name])) {
+          if (conditional_fields_is_empty($form_state['values'][$controlled_field_name], $in_group ? $form[$in_group][$controlled_field_name] : $form[$controlled_field_name], $form['#field_info'][$controlled_field_name])) {
             // Check whether the controlled field is in a group or not and set error accordingly
             if (!$in_group) {
               form_error($controlled_field, t('!name field is required.', array('!name' => $controlled_field['#title'])));
@@ -948,7 +973,7 @@ function conditional_fields_node_editing_form_validate($form, &$form_state) {
       }
     }
     // Controlled group
-    elseif (strpos($controlled_field_name , 'group_') === 0) {
+    elseif (strpos($controlled_field_name, 'group_') === 0) {
       foreach (element_children($controlled_field) as $field_in_group) {
         // Check if the controlling field was triggered
         if ($triggered) {
@@ -956,7 +981,7 @@ function conditional_fields_node_editing_form_validate($form, &$form_state) {
           if (!empty($required_fields)
             && $required_fields[$field_in_group]
             && !$controlled_field[$field_in_group]['#controlled_fields']
-            && conditional_fields_check_empty($form_state['values'][$field_in_group])) {
+            && conditional_fields_is_empty($form_state['values'][$field_in_group], $form[$controlled_field_name][$field_in_group], $form['#field_info'][$field_in_group])) {
               form_error($controlled_field[$field_in_group],
               t('!name field is required.',
               array('!name' => $controlled_field[$field_in_group]['#title'])));
@@ -983,23 +1008,39 @@ function conditional_fields_node_editing_form_validate($form, &$form_state) {
 }
 
 /**
- * Checks if a submitted field value is empty
+ * Checks if a submitted field value is empty.
  */
-function conditional_fields_check_empty($field) {
-  // Normal fields
-  if (isset($field[0]['value'])) {
-    $value = $field[0]['value'];
-  }
-  // Node reference
-  elseif (isset($field[0]['nid'])) {
-    $value = $field[0]['nid'];
+function conditional_fields_is_empty($item, $field, $field_info) {
+  // First, check if the module that provides the field implements
+  // hook_content_is_empty, and, if so, use it.
+  if (in_array($field_info['module'], module_implements('content_is_empty'))) {
+    $empty = $field_info['module'] . '_content_is_empty';
+    return $empty($item, $field);
   }
 
-  if (!count($value) || (is_string($value) && drupal_strlen(trim($value)) == 0)) {
+  $value = NULL;
+
+  // Attempt to extract the key from "_error_element".
+  if (isset($item[0]['_error_element'])) {
+    $error_tree = explode('][', $item[0]['_error_element']);
+    $key = array_pop($error_tree);
+
+    if (isset($item[0][$key])) {
+      $value = $item[0][$key];
+    }
+  }
+
+  // Last resort: maybe the field uses a generic "value" key.
+  if (is_null($value) && isset($item[0]['value'])) {
+    $value = $item[0]['value'];
+  }
+  else {
+    // If no value was found, assume that the field is empty,
+    // which may be annoying, but prevents saving incomplete data.
     return TRUE;
   }
 
-  return FALSE;
+  return !count($value) || (is_string($value) && drupal_strlen(trim($value)) == 0);
 }
 
 /**
@@ -1077,14 +1118,31 @@ function conditional_fields_field_overview_form(&$form) {
 }
 
 /**
- * Conditional fields can't change group.
+ * Conditional fields in some situations can't change group.
  */
 function conditional_fields_field_overview_form_validate($form, $form_state) {
-  $data = conditional_fields_load_data($form['#type_name'], 'flat');
+  $data = conditional_fields_load_data($form['#type_name']);
 
-  foreach ($form['#fields'] as $field_name) {
-    if (!empty($data[$field_name]) && !empty($form_state['values'][$field_name]['parent']) && !empty($form_state['values'][$field_name]['prev_parent']) && $form_state['values'][$field_name]['parent'] != $form_state['values'][$field_name]['prev_parent']) {
-      form_set_error('', t("You can't change the parent group of a conditional field."));
+  // Build a list of controlled fields/groups.
+  $controlled_fields = array();
+  foreach ($data as $dependency) {
+    $controlled_fields[$dependency['field_name']] = $dependency['field_name'];
+  }
+
+  foreach ($data as $dependency) {
+    // If a field is inside a controlled group, it can control or be controlled only by fields in the same group,
+    // so moving fields in disallowed positions is forbidden.
+    $controlling_group = $form_state['values'][$dependency['control_field_name']]['parent'];
+    $controlled_group = $form_state['values'][$dependency['field_name']]['parent'];
+
+    // If the fields share the same parent (no group or same group), allow moving.
+    if ($controlling_group == $controlled_group) {
+      continue;
+    }
+
+    // If the fields have different parents, only allow parents that are not controlled.
+    if (in_array($controlling_group, $controlled_fields) || in_array($controlled_group, $controlled_fields)) {
+      form_set_error('', t('Fields inside a controlled group can only be controlling or be controlled by a field in the same group.'));
     }
   }
 }
@@ -1105,15 +1163,22 @@ function conditional_fields_available_fields_default_values($control_field, $con
 }
 
 /**
- * Adds javascript to the node editing form
+ * Adds javascript to the node editing form.
+ *
+ * This function ensures that the settings are added only once for each form
+ * on the page that includes conditional fields.
+ *
+ * @param $settings
+ *   An array of settings keyed by the form's #build_id property.
  */
 function conditional_fields_add_js($settings) {
-  // Avoid adding js twice when the node form has failed validation
   static $js;
-  if (!$js) {
+  $build_id = current(array_keys($settings));
+
+  if (!isset($js[$build_id])) {
     drupal_add_js(array('ConditionalFields' => $settings), 'setting');
     drupal_add_js(drupal_get_path('module', 'conditional_fields') . '/conditional_fields.js');
-    $js = TRUE;
+    $js[$build_id] = TRUE;
   }
 }
 
@@ -1213,7 +1278,7 @@ function conditional_fields_content_fieldapi($ops, $field) {
   }
   // Import conditional fields definitions with content_copy module
   elseif ($ops == 'create instance') {
-    if ($field['conditional_fields']['available_fields']) {
+    if (!empty($field['conditional_fields']['available_fields'])) {
       conditional_fields_save_field($field['type_name'], $field['field_name'], $field['conditional_fields']['available_fields']);
     }
   }
@@ -1268,37 +1333,76 @@ function conditional_fields_delete_field($type_name, $controlled_field, $control
 }
 
 /**
- * Wrapper for conditional_fields_set_required_field_recurse
+ * Unset the #required property and set a #conditional_fields_required property
+ * for custom validation.
+ *
+ * @see conditional_fields_set_required_field()
  */
-function conditional_fields_set_required_field($item) {
-  conditional_fields_set_required_field_recurse($item);
-  return $item;
-};
-
-/**
- * Recursive function to set required for all conditionally required fields.
- * This causes Drupal to render conditionally required fields in a way that
- * indicates they are required when visible.
- */
-function conditional_fields_set_required_field_recurse(&$item) {
-  $item['#required'] = TRUE;
-  foreach (element_children($item) as $child) {
-    conditional_fields_set_required_field_recurse($item[$child]);
-  }
-}
-
-/**
- * Unset the #required property and set a #conditional_fields_required property for custom validation.
- */
-function conditional_fields_custom_required_field(&$field) {
-  if ($field['#required']) {
+function conditional_fields_custom_required_field(&$field, &$field_info = NULL) {
+  if (isset($field['#required']) && $field['#required']) {
     unset($field['#required']);
     $field['#conditional_fields_required'] = TRUE;
+
+    // Some modules like FileField use the field info property to check if the
+    // field is required, so change it.
+    if ($field_info) {
+      $field_info['required'] = '0';
+    }
+
+    // Required radio buttons without a default value need custom validation,
+    // otherwise _form_validate will think that an invalid choice is selected
+    // when the field is submitted with no value.
+    if ($field['#type'] == 'radios' && !$field['#default_value'] && isset($field['#needs_validation']) && $field['#needs_validation']) {
+      unset($field['#needs_validation']);
+      $field['#element_validate'] = array_merge(array('conditional_fields_required_radios_validate'), (array) $field['#validate']);
+    }
   }
   foreach (element_children($field) as $child) {
     conditional_fields_custom_required_field($field[$child]);
   }
 }
+
+
+/**
+ * Custom validation for radio buttons.
+ * Reproduces the behavior of _form_validate, while adding an empty option.
+ */
+function conditional_fields_required_radios_validate($elements) {
+  $elements['#options'][''] = t('N/A');
+
+  if (isset($elements['#options']) && isset($elements['#value'])) {
+    if (is_array($elements['#value'])) {
+      foreach ($elements['#value'] as $v) {
+        if (!isset($elements['#options'][$v])) {
+          form_error($elements, t('An illegal choice has been detected. Please contact the site administrator.'));
+          watchdog('form', 'Illegal choice %choice in !name element.', array('%choice' => $v, '!name' => empty($elements['#title']) ? $elements['#parents'][0] : $elements['#title']), WATCHDOG_ERROR);
+        }
+      }
+    }
+    elseif (!isset($elements['#options'][$elements['#value']])) {
+      form_error($elements, t('An illegal choice has been detected. Please contact the site administrator.'));
+      watchdog('form', 'Illegal choice %choice in %name element.', array('%choice' => $elements['#value'], '%name' => empty($elements['#title']) ? $elements['#parents'][0] : $elements['#title']), WATCHDOG_ERROR);
+    }
+  }
+}
+
+/**
+ * Marks as required a conditionally required form item and its descendants.
+ *
+ * Since this function is called from a theme function, the item will appear
+ * required, but it won't be actually required.
+ *
+ * @see conditional_fields_custom_required_field()
+ */
+function conditional_fields_set_required_field($item) {
+  if (!empty($item['#conditional_fields_required'])) {
+    $item['#required'] = TRUE;
+  }
+  foreach (element_children($item) as $child) {
+    $item[$child] = conditional_fields_set_required_field($item[$child]);
+  }
+  return $item;
+};
 
 /**
  * Implementation of hook_features_api() (features module).
