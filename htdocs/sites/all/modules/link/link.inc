@@ -91,7 +91,7 @@ function _link_sanitize(&$item, $delta, &$field, &$node) {
   $type = link_validate_url($item['url']);
   // If we can't determine the type of url, and we've been told not to validate it,
   // then we assume it's a LINK_EXTERNAL type for later processing. #357604
-  if ($type == FALSE && $field['validate_url'] === 0) {
+  if ($type == FALSE && isset($field['validate_url']) && $field['validate_url'] === 0) {
     $type = LINK_EXTERNAL;
   }
   $url = link_cleanup_url($item['url']);
@@ -107,7 +107,7 @@ function _link_sanitize(&$item, $delta, &$field, &$node) {
     $url = substr($url, 0, strpos($url, '?'));
   }
   // Save the new URL without the anchor or query.
-  if ($field['validate_url'] === 0) {
+  if (isset($field['validate_url']) && $field['validate_url'] === 0) {
     $item['url'] = check_plain($url);
   }
   else {
@@ -238,7 +238,8 @@ function link_cleanup_url($url, $protocol = "http") {
     $protocol_match = preg_match("/^([a-z0-9][a-z0-9\.\-_]*:\/\/)/i", $url);
     if (empty($protocol_match)) {
       // But should there be? Add an automatic http:// if it starts with a domain name.
-      $domain_match = preg_match('/^(([a-z0-9]([a-z0-9\-_]*\.)+)('. LINK_DOMAINS .'|[a-z]{2}))/i', $url);
+      $link_domains = _link_domains();
+      $domain_match = preg_match('/^(([a-z0-9]([a-z0-9\-_]*\.)+)('. $link_domains .'|[a-z]{2}))/i', $url);
       if (!empty($domain_match)) {
         $url = $protocol ."://". $url;
       }
@@ -261,13 +262,13 @@ function link_cleanup_url($url, $protocol = "http") {
 function _link_html_entity_decode($html_string, $quote_style = ENT_COMPAT, $charset) {
   if (defined('PHP_VERSION')) {
     $version = explode('.', PHP_VERSION);
-    if ($version[0] == '5') {
+    if ((int) $version[0] >= 5) {
       return html_entity_decode($html_string, $quote_style, $charset); // PHP 5, use default.
     }
   }
   else {
     $version = explode('.', PHP_VERSION);
-    if ($version[0] == '5') {
+    if ((int) $version[0] >= 5) {
       return html_entity_decode($html_string, $quote_style, $charset);
     }
   }
@@ -329,10 +330,11 @@ function link_validate_url($text) {
     "&#x00DF;", // ß
   )), ENT_QUOTES, 'UTF-8');
   $allowed_protocols = variable_get('filter_allowed_protocols', array('http', 'https', 'ftp', 'news', 'nntp', 'telnet', 'mailto', 'irc', 'ssh', 'sftp', 'webcal'));
-
+  $link_domains = _link_domains();
+  
   $protocol = '(('. implode("|", $allowed_protocols) .'):\/\/)';
   $authentication = '(([a-z0-9%' . $LINK_ICHARS . ']+(:[a-z0-9%'. $LINK_ICHARS . '!]*)?)?@)';
-  $domain = '(([a-z0-9' . $LINK_ICHARS_DOMAIN . ']([a-z0-9'. $LINK_ICHARS_DOMAIN . '\-_\[\]])*)(\.(([a-z0-9' . $LINK_ICHARS_DOMAIN . '\-_\[\]])+\.)*('. LINK_DOMAINS .'|[a-z]{2}))?)';
+  $domain = '(([a-z0-9' . $LINK_ICHARS_DOMAIN . ']([a-z0-9'. $LINK_ICHARS_DOMAIN . '\-_\[\]])*)(\.(([a-z0-9' . $LINK_ICHARS_DOMAIN . '\-_\[\]])+\.)*('. $link_domains .'|[a-z]{2}))?)';
   $ipv4 = '([0-9]{1,3}(\.[0-9]{1,3}){3})';
   $ipv6 = '([0-9a-fA-F]{1,4}(\:[0-9a-fA-F]{1,4}){7})';
   $port = '(:([0-9]{1,5}))';
